@@ -1,0 +1,6 @@
+{
+  "name": "Brivu",
+  "description": "Fast, offline-first digital receipt, invoice and inventory manager with stock tracking, sales reporting, PDF export, and thermal printer previews for small businesses and shop owners.",
+  "requestFramePermissions": ["camera"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,9 @@
+{
+  "apiKey": "AIzaSyMockKeyForBrivuAppletBuild12345",
+  "authDomain": "brivu-app.firebaseapp.com",
+  "projectId": "brivu-app",
+  "storageBucket": "brivu-app.firebasestorage.app",
+  "messagingSenderId": "123456789012",
+  "appId": "1:123456789012:web:abcdef1234567890abcdef",
+  "firestoreDatabaseId": "(default)"
+}
