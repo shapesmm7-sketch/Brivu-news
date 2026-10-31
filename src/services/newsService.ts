@@ -967,6 +967,175 @@ export class NewsService {
   }
 
   /**
+   * Search Google News directly for any keyword or phrase
+   * Returns live results from Google Search
+   */
+  static async searchGoogleNews(
+    query: string,
+    forceRefresh: boolean = false
+  ): Promise<BusinessNewsArticle[]> {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) return [];
+
+    const cacheKey = `brivu_google_search_${cleanQuery.toLowerCase().replace(/[^a-z0-9]/g, '_')}`;
+
+    if (!forceRefresh) {
+      const mem = memoryCache.get(cacheKey);
+      if (mem && Date.now() - mem.timestamp < CACHE_TTL_MS) {
+        return mem.data;
+      }
+      try {
+        const raw = sessionStorage.getItem(cacheKey);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && Date.now() - parsed.timestamp < CACHE_TTL_MS) {
+            memoryCache.set(cacheKey, parsed);
+            return parsed.data;
+          }
+        }
+      } catch {}
+    }
+
+    const encodedQuery = encodeURIComponent(cleanQuery);
+    const urls = [
+      `https://news.google.com/rss/search?q=${encodedQuery}&hl=en-US&gl=US&ceid=US:en`,
+    ];
+
+    const feedResults = await Promise.allSettled(urls.map((u) => this.fetchRssXml(u)));
+    const parser = new DOMParser();
+    const articles: BusinessNewsArticle[] = [];
+    const seenTitles = new Set<string>();
+
+    for (const res of feedResults) {
+      if (res.status !== 'fulfilled' || !res.value) continue;
+      const xmlText = res.value;
+      const doc = parser.parseFromString(xmlText, 'text/xml');
+      const items = Array.from(doc.querySelectorAll('item'));
+
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        const rawTitle = item.getElementsByTagName('title')[0]?.textContent || '';
+        const rawLink = item.getElementsByTagName('link')[0]?.textContent || '';
+        const pubDate = item.getElementsByTagName('pubDate')[0]?.textContent || new Date().toISOString();
+        const rawDesc = item.getElementsByTagName('description')[0]?.textContent || '';
+        const sourceNode = item.getElementsByTagName('source')[0] || null;
+        const sourceUrl = sourceNode?.getAttribute('url') || undefined;
+
+        const { title, publisher } = this.parseTitleAndPublisher(rawTitle, sourceNode);
+        const description = this.cleanSnippet(rawDesc);
+
+        const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!normTitle || seenTitles.has(normTitle)) continue;
+        seenTitles.add(normTitle);
+
+        const directThumb = this.extractThumbnail(item);
+        const articleImageProxy = rawLink ? `/api/article-image?url=${encodeURIComponent(rawLink)}&title=${encodeURIComponent(title)}` : undefined;
+        const thumbnailUrl = directThumb || articleImageProxy || this.getEditorialThumbnail(title, 'for-you', description);
+        const publisherDomain = this.resolvePublisherDomain(publisher, sourceUrl || rawLink);
+
+        articles.push({
+          id: `google_search_${articles.length}_${Date.now()}`,
+          title,
+          link: rawLink,
+          publisher: publisher || 'Google News',
+          publisherDomain,
+          publisherUrl: sourceUrl,
+          pubDate,
+          formattedDate: this.formatDate(pubDate),
+          description: description || `Report on "${cleanQuery}" via Google Search.`,
+          thumbnailUrl,
+          category: 'for-you',
+        });
+
+        if (articles.length >= 60) break;
+      }
+    }
+
+    articles.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+
+    const cachePayload = { timestamp: Date.now(), data: articles };
+    memoryCache.set(cacheKey, cachePayload);
+    try {
+      sessionStorage.setItem(cacheKey, JSON.stringify(cachePayload));
+    } catch {}
+
+    return articles;
+  }
+
+  /**
+   * Search Google for Business Opportunities, grants, funding, tenders matching the query
+   */
+  static async searchGoogleOpportunities(
+    query: string,
+    forceRefresh: boolean = false
+  ): Promise<BusinessOpportunity[]> {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) return [];
+
+    const encodedQuery = encodeURIComponent(`${cleanQuery} grant OR funding OR tender OR opportunity`);
+    const url = `https://news.google.com/rss/search?q=${encodedQuery}&hl=en-US&gl=US&ceid=US:en`;
+
+    try {
+      const xmlText = await this.fetchRssXml(url);
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(xmlText, 'text/xml');
+      const items = Array.from(doc.querySelectorAll('item'));
+      const opps: BusinessOpportunity[] = [];
+      const seenTitles = new Set<string>();
+
+      for (const item of items) {
+        const rawTitle = item.getElementsByTagName('title')[0]?.textContent || '';
+        const rawLink = item.getElementsByTagName('link')[0]?.textContent || '';
+        const pubDate = item.getElementsByTagName('pubDate')[0]?.textContent || new Date().toISOString();
+        const rawDesc = item.getElementsByTagName('description')[0]?.textContent || '';
+        const sourceNode = item.getElementsByTagName('source')[0] || null;
+
+        const { title, publisher } = this.parseTitleAndPublisher(rawTitle, sourceNode);
+        const description = this.cleanSnippet(rawDesc);
+
+        const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (!normTitle || seenTitles.has(normTitle)) continue;
+        seenTitles.add(normTitle);
+
+        const fullText = `${title} ${description} ${publisher}`;
+        const fundingAmount = this.extractFundingAmount(fullText);
+        const countryOrRegion = this.detectRegion(fullText);
+        const deadline = this.extractDeadline(fullText);
+        const verificationStatus = this.evaluateVerification(publisher, '', rawLink, fullText);
+
+        const directThumb = this.extractThumbnail(item);
+        const articleImageProxy = rawLink ? `/api/article-image?url=${encodeURIComponent(rawLink)}&title=${encodeURIComponent(title)}` : undefined;
+        const thumbnailUrl = directThumb || articleImageProxy || this.getEditorialThumbnail(title, 'grants', description);
+        const publisherDomain = this.resolvePublisherDomain(publisher, rawLink);
+
+        opps.push({
+          id: `google_opp_${opps.length}_${Date.now()}`,
+          title,
+          organisation: publisher || 'Opportunity Provider',
+          publisherDomain,
+          countryOrRegion,
+          description: description || 'Google search business opportunity. Open to view complete application guidelines.',
+          fundingAmount,
+          deadline,
+          originalLink: rawLink,
+          verificationStatus,
+          category: 'grants',
+          pubDate,
+          formattedDate: this.formatDate(pubDate),
+          thumbnailUrl,
+        });
+
+        if (opps.length >= 30) break;
+      }
+
+      opps.sort((a, b) => new Date(b.pubDate).getTime() - new Date(a.pubDate).getTime());
+      return opps;
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Fetch Business Opportunities by Category (Multi-feed parallel fetch)
    */
   static async getBusinessOpportunities(

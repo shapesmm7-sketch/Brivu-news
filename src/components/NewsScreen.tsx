@@ -78,6 +78,16 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
   // Search keyword query
   const [searchQuery, setSearchQuery] = useState<string>('');
 
+  // Dedicated Google Search Page states
+  const [isGoogleSearchActive, setIsGoogleSearchActive] = useState<boolean>(false);
+  const [googleSearchInput, setGoogleSearchInput] = useState<string>('');
+  const [activeGoogleQuery, setActiveGoogleQuery] = useState<string>('');
+  const [googleSearchResults, setGoogleSearchResults] = useState<BusinessNewsArticle[]>([]);
+  const [googleSearchOpps, setGoogleSearchOpps] = useState<BusinessOpportunity[]>([]);
+  const [isSearchingGoogle, setIsSearchingGoogle] = useState<boolean>(false);
+  const [googleSearchTab, setGoogleSearchTab] = useState<'all' | 'news' | 'opportunities'>('all');
+  const [googleSearchError, setGoogleSearchError] = useState<string | null>(null);
+
   // Data states
   const [newsArticles, setNewsArticles] = useState<BusinessNewsArticle[]>([]);
   const [opportunities, setOpportunities] = useState<BusinessOpportunity[]>([]);
@@ -422,6 +432,33 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 
+  // Execute real-time Google search for any news, topic or company
+  const executeGoogleSearch = useCallback(async (query: string, force: boolean = false) => {
+    const q = query.trim();
+    if (!q) return;
+
+    setActiveGoogleQuery(q);
+    setGoogleSearchInput(q);
+    setIsGoogleSearchActive(true);
+    setIsSearchingGoogle(true);
+    setGoogleSearchError(null);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    try {
+      const [articles, opps] = await Promise.all([
+        NewsService.searchGoogleNews(q, force),
+        NewsService.searchGoogleOpportunities(q, force),
+      ]);
+      setGoogleSearchResults(articles);
+      setGoogleSearchOpps(opps);
+    } catch (err: any) {
+      console.warn('Google search failed:', err);
+      setGoogleSearchError('Unable to load Google search results right now. Please check connection and try again.');
+    } finally {
+      setIsSearchingGoogle(false);
+    }
+  }, []);
+
   // Dedicated Country Selection Page view mode
   if (isSelectingCountry) {
     return (
@@ -561,6 +598,553 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
                 </button>
               );
             })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Dedicated Full Google Search Results Page view mode
+  if (isGoogleSearchActive) {
+    const totalResults = googleSearchResults.length + googleSearchOpps.length;
+
+    let displayedNews = googleSearchResults;
+    let displayedOpps = googleSearchOpps;
+    if (googleSearchTab === 'news') {
+      displayedOpps = [];
+    } else if (googleSearchTab === 'opportunities') {
+      displayedNews = [];
+    }
+
+    const hasAnyResults = displayedNews.length > 0 || displayedOpps.length > 0;
+
+    return (
+      <div className="space-y-4 pb-24 sm:pb-28 animate-fadeIn max-w-2xl mx-auto">
+        {/* Toast Notification */}
+        {toastText && (
+          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-lg border border-slate-700 animate-bounce">
+            {toastText}
+          </div>
+        )}
+
+        {/* TOP BAR / NAVIGATION */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-xs flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setIsGoogleSearchActive(false);
+              setSearchQuery('');
+            }}
+            className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition-all cursor-pointer shadow-xs"
+          >
+            <ArrowLeft className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            <span>Back to Feed</span>
+          </button>
+
+          {/* Quick link to Google Web Search */}
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => openUrl(`https://www.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-blue-50 dark:bg-blue-950/60 text-[#4285F4] dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/60 transition-colors shadow-xs cursor-pointer"
+              title="Open full page on Google.com"
+            >
+              <span>Google.com</span>
+              <ExternalLink className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* SEARCH INPUT CARD WITH GOOGLE LOGO */}
+        <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-4 shadow-xs space-y-3.5">
+          {/* Header Row: Google Brand Logo and Live Status */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="flex items-center tracking-tight font-black text-xl select-none">
+                <span className="text-[#4285F4]">G</span>
+                <span className="text-[#EA4335]">o</span>
+                <span className="text-[#FBBC05]">o</span>
+                <span className="text-[#4285F4]">g</span>
+                <span className="text-[#34A853]">l</span>
+                <span className="text-[#EA4335]">e</span>
+                <span className="text-slate-900 dark:text-slate-100 font-bold text-xs ml-1.5 px-2 py-0.5 bg-slate-100 dark:bg-slate-800 rounded-md">Search</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+              <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="font-semibold text-[11px] text-blue-600 dark:text-blue-400">Live Web & News</span>
+            </div>
+          </div>
+
+          {/* Form Search Input */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (googleSearchInput.trim()) {
+                executeGoogleSearch(googleSearchInput);
+              }
+            }}
+            className="flex items-center gap-2"
+          >
+            <div className="relative flex-1">
+              <Search className="w-4.5 h-4.5 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={googleSearchInput}
+                onChange={(e) => setGoogleSearchInput(e.target.value)}
+                placeholder="Search Google for any topic, news, market..."
+                className="w-full pl-10 pr-9 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+              />
+              {googleSearchInput && (
+                <button
+                  type="button"
+                  onClick={() => setGoogleSearchInput('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSearchingGoogle || !googleSearchInput.trim()}
+              className="px-4 py-2.5 bg-[#4285F4] hover:bg-blue-600 active:scale-95 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer disabled:opacity-50 transition-all flex items-center gap-1.5 shrink-0"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Search</span>
+            </button>
+          </form>
+
+          {/* FILTER TABS & DIRECT GOOGLE SHORTCUTS */}
+          <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800 text-xs">
+            {/* Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none">
+              <button
+                type="button"
+                onClick={() => setGoogleSearchTab('all')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer shrink-0 ${
+                  googleSearchTab === 'all'
+                    ? 'bg-slate-900 dark:bg-slate-100 text-white dark:text-slate-900 shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                All Results ({totalResults})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGoogleSearchTab('news')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer shrink-0 ${
+                  googleSearchTab === 'news'
+                    ? 'bg-emerald-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                News Stories ({googleSearchResults.length})
+              </button>
+              <button
+                type="button"
+                onClick={() => setGoogleSearchTab('opportunities')}
+                className={`px-3 py-1.5 rounded-xl font-bold transition-all cursor-pointer shrink-0 ${
+                  googleSearchTab === 'opportunities'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
+                }`}
+              >
+                Opportunities ({googleSearchOpps.length})
+              </button>
+            </div>
+
+            {/* Refresh button */}
+            <button
+              type="button"
+              onClick={() => executeGoogleSearch(activeGoogleQuery, true)}
+              disabled={isSearchingGoogle}
+              className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 font-medium cursor-pointer"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSearchingGoogle ? 'animate-spin text-blue-500' : ''}`} />
+              <span>Refresh</span>
+            </button>
+          </div>
+        </div>
+
+        {/* RESULTS HEADER ROW */}
+        <div className="flex items-center justify-between px-1 text-xs text-slate-500 dark:text-slate-400">
+          <span>
+            Google results for <span className="font-bold text-slate-900 dark:text-slate-100">"{activeGoogleQuery}"</span>
+          </span>
+          <button
+            type="button"
+            onClick={() => openUrl(`https://www.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+            className="text-[#4285F4] hover:underline font-bold inline-flex items-center gap-1 cursor-pointer"
+          >
+            <span>Open in Google ↗</span>
+          </button>
+        </div>
+
+        {/* ERROR STATE */}
+        {googleSearchError && (
+          <div className="p-4 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/80 rounded-2xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+            <div className="flex-1 text-xs">
+              <p className="font-bold text-amber-900 dark:text-amber-200">Google Search Notice</p>
+              <p className="text-amber-700 dark:text-amber-300 mt-0.5 leading-relaxed">{googleSearchError}</p>
+              <div className="flex items-center gap-2 mt-2.5">
+                <button
+                  type="button"
+                  onClick={() => executeGoogleSearch(activeGoogleQuery, true)}
+                  className="px-3 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg font-bold text-xs cursor-pointer shadow-xs"
+                >
+                  Retry Search
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openUrl(`https://www.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+                  className="px-3 py-1 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg font-bold text-xs cursor-pointer"
+                >
+                  Open on Google.com ↗
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* LOADING STATE */}
+        {isSearchingGoogle && (
+          <div className="space-y-4">
+            <div className="p-4 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-center gap-3 shadow-xs">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#4285F4] animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#EA4335] animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#FBBC05] animate-bounce" style={{ animationDelay: '300ms' }} />
+                <span className="w-2.5 h-2.5 rounded-full bg-[#34A853] animate-bounce" style={{ animationDelay: '450ms' }} />
+              </div>
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Searching Google for "{activeGoogleQuery}"...</span>
+            </div>
+
+            {[1, 2, 3].map((n) => (
+              <div
+                key={n}
+                className="p-3 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 animate-pulse space-y-3"
+              >
+                <div className="w-full aspect-[16/9] bg-slate-200 dark:bg-slate-800 rounded-xl" />
+                <div className="space-y-2 pt-1 px-1">
+                  <div className="w-full h-5 bg-slate-200 dark:bg-slate-800 rounded-md" />
+                  <div className="w-4/5 h-5 bg-slate-200 dark:bg-slate-800 rounded-md" />
+                  <div className="w-3/5 h-4 bg-slate-100 dark:bg-slate-800/60 rounded-md" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* EMPTY STATE */}
+        {!isSearchingGoogle && !hasAnyResults && (
+          <div className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800 rounded-2xl p-10 text-center space-y-3">
+            <div className="w-12 h-12 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 flex items-center justify-center text-[#4285F4] mx-auto">
+              <Search className="w-6 h-6 stroke-[2]" />
+            </div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-100">
+              No results found for "{activeGoogleQuery}"
+            </h3>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mx-auto">
+              Try searching with more general keywords or view full results on Google Search directly.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => openUrl(`https://www.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+                className="px-4 py-2.5 rounded-xl bg-[#4285F4] hover:bg-blue-600 text-white font-bold text-xs transition-colors shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+              >
+                <span>Search on Google.com</span>
+                <ExternalLink className="w-3.5 h-3.5" />
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsGoogleSearchActive(false);
+                  setSearchQuery('');
+                }}
+                className="px-4 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Return to News Feed
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* RESULTS CARDS */}
+        {!isSearchingGoogle && hasAnyResults && (
+          <div className="space-y-4">
+            {/* News Stories from Google */}
+            {displayedNews.map((article) => {
+              const isLiked = likedIds.has(article.id);
+              const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                article.publisherDomain || 'google.com'
+              )}&sz=64`;
+
+              return (
+                <article
+                  key={article.id}
+                  className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800/90 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
+                >
+                  <div
+                    onClick={() => openUrl(article.link, { ...article, type: 'news' })}
+                    className="relative w-full aspect-[16/9] bg-slate-900 overflow-hidden cursor-pointer"
+                  >
+                    <img
+                      src={article.thumbnailUrl}
+                      alt=""
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.dataset.triedFallback) {
+                          target.dataset.triedFallback = 'true';
+                          target.src = NewsService.getEditorialThumbnail(article.title, article.category, article.description);
+                        }
+                      }}
+                    />
+
+                    <div className="absolute top-2.5 left-2.5 pointer-events-none">
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 backdrop-blur-md text-white shadow-sm border border-white/20">
+                        Google News
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1">
+                    <div>
+                      <h3
+                        onClick={() => openUrl(article.link, { ...article, type: 'news' })}
+                        className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug tracking-tight hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors"
+                      >
+                        {article.title}
+                      </h3>
+
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed line-clamp-2">
+                        {article.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                        <div className="w-4.5 h-4.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center">
+                          <img
+                            src={faviconUrl}
+                            alt=""
+                            className="w-3.5 h-3.5 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+                          <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[140px] xs:max-w-[180px]">
+                            {article.publisher}
+                          </span>
+                          <span>•</span>
+                          <span className="shrink-0">{article.formattedDate}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleLikeItem({ ...article, type: 'news' })}
+                          title={isLiked ? 'Saved' : 'Like'}
+                          className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                            isLiked
+                              ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/60'
+                              : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-500 stroke-rose-500' : 'stroke-[1.8]'}`} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleShare(article.title, article.link)}
+                          title="Share Article"
+                          className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                        >
+                          <Share2 className="w-4 h-4 stroke-[1.8]" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openUrl(article.link, { ...article, type: 'news' })}
+                          title="Read full article"
+                          className="p-1.5 rounded-full text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                        >
+                          <ExternalLink className="w-4 h-4 stroke-[1.8]" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+
+            {/* Opportunities from Google */}
+            {displayedOpps.map((opp) => {
+              const isLiked = likedIds.has(opp.id);
+              const faviconUrl = `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+                opp.publisherDomain || 'google.com'
+              )}&sz=64`;
+
+              return (
+                <div
+                  key={opp.id}
+                  className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200/90 dark:border-slate-800/90 shadow-sm hover:shadow-md transition-all duration-200 overflow-hidden flex flex-col"
+                >
+                  <div
+                    onClick={() => openUrl(opp.originalLink, { ...opp, type: 'opportunity' })}
+                    className="relative w-full aspect-[16/9] bg-slate-100 dark:bg-slate-800 overflow-hidden cursor-pointer"
+                  >
+                    <img
+                      src={opp.thumbnailUrl}
+                      alt={opp.title}
+                      loading="lazy"
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover group-hover:scale-102 transition-transform duration-300"
+                      onError={(e) => {
+                        const target = e.currentTarget as HTMLImageElement;
+                        if (!target.dataset.triedFallback) {
+                          target.dataset.triedFallback = 'true';
+                          target.src = NewsService.getEditorialThumbnail(opp.title, opp.category, opp.description);
+                        }
+                      }}
+                    />
+
+                    <div className="absolute top-2.5 left-2.5 right-2.5 flex items-center justify-between gap-2 pointer-events-none">
+                      <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider bg-slate-900/80 backdrop-blur-md text-white shadow-sm border border-white/20">
+                        Opportunity
+                      </span>
+
+                      {opp.verificationStatus === 'verified' && (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold bg-emerald-600/90 backdrop-blur-md text-white shadow-sm border border-emerald-400/40">
+                          <ShieldCheck className="w-3.5 h-3.5" />
+                          <span>Verified</span>
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="p-3.5 sm:p-4 flex flex-col justify-between flex-1">
+                    <div>
+                      <h3
+                        onClick={() => openUrl(opp.originalLink, { ...opp, type: 'opportunity' })}
+                        className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug tracking-tight hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
+                      >
+                        {opp.title}
+                      </h3>
+
+                      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-slate-500 dark:text-slate-400 mt-2">
+                        <div className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                          <Building2 className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{opp.organisation}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <MapPin className="w-3.5 h-3.5 text-slate-400" />
+                          <span>{opp.countryOrRegion}</span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-2 leading-relaxed line-clamp-2">
+                        {opp.description}
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex items-center gap-2 min-w-0 pr-2">
+                        <div className="w-4.5 h-4.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shrink-0 flex items-center justify-center">
+                          <img
+                            src={faviconUrl}
+                            alt=""
+                            className="w-3.5 h-3.5 object-contain"
+                            onError={(e) => {
+                              (e.target as HTMLElement).style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 truncate">
+                          <span className="font-semibold text-slate-700 dark:text-slate-300 truncate max-w-[120px] xs:max-w-[160px]">
+                            {opp.organisation}
+                          </span>
+                          <span>•</span>
+                          <span className="shrink-0">{opp.formattedDate}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => toggleLikeItem({ ...opp, type: 'opportunity' })}
+                          title={isLiked ? 'Saved' : 'Like'}
+                          className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                            isLiked
+                              ? 'text-rose-500 bg-rose-50 dark:bg-rose-950/60'
+                              : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800'
+                          }`}
+                        >
+                          <Heart className={`w-4 h-4 ${isLiked ? 'fill-rose-500 stroke-rose-500' : 'stroke-[1.8]'}`} />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => handleShare(opp.title, opp.originalLink)}
+                          title="Share Opportunity"
+                          className="p-1.5 rounded-full text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-all cursor-pointer"
+                        >
+                          <Share2 className="w-4 h-4 stroke-[1.8]" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => openUrl(opp.originalLink, { ...opp, type: 'opportunity' })}
+                          className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition-colors shadow-xs cursor-pointer ml-1"
+                        >
+                          <span>Apply</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+
+            {/* FULL GOOGLE SEARCH BANNER AT BOTTOM */}
+            <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800/60 rounded-2xl p-4 text-center space-y-2 mt-6">
+              <div className="flex items-center justify-center gap-1.5 text-sm font-bold text-slate-800 dark:text-slate-200">
+                <span>Want to see all results directly on Google?</span>
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+                Open full Google web, images, videos, and news results for "{activeGoogleQuery}" in a new tab.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => openUrl(`https://www.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+                  className="px-4 py-2 bg-[#4285F4] hover:bg-blue-600 text-white rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>Open Full Google Search Page</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => openUrl(`https://news.google.com/search?q=${encodeURIComponent(activeGoogleQuery)}`)}
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900 rounded-xl text-xs font-bold shadow-xs cursor-pointer inline-flex items-center gap-1.5"
+                >
+                  <span>Open Google News</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -718,31 +1302,48 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
       </div>
 
       {/* SEARCH AND REFRESH TOOLBAR */}
-      <div className="flex items-center gap-2">
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (searchQuery.trim()) {
+            executeGoogleSearch(searchQuery);
+          }
+        }}
+        className="flex items-center gap-2"
+      >
         <div className="relative flex-1">
           <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder={
-              sectionMode === 'news'
-                ? newsCategory === 'country'
-                  ? `Search ${selectedCountry.name} headlines...`
-                  : `Search ${newsCategory} headlines...`
-                : `Search ${oppCategory} opportunities...`
-            }
-            className="w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && searchQuery.trim()) {
+                e.preventDefault();
+                executeGoogleSearch(searchQuery);
+              }
+            }}
+            placeholder="Search with Google for any news, topic, market..."
+            className="w-full pl-9 pr-22 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 shadow-xs"
           />
           {searchQuery && (
             <button
               type="button"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+              className="absolute right-15 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
             >
-              Clear
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
+          <button
+            type="submit"
+            disabled={!searchQuery.trim()}
+            className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2.5 py-1 bg-[#4285F4] hover:bg-blue-600 text-white rounded-lg text-[11px] font-bold shadow-xs cursor-pointer transition-all active:scale-95 flex items-center gap-1 disabled:opacity-40"
+            title="Search with Google"
+          >
+            <span>Google</span>
+            <Search className="w-3 h-3" />
+          </button>
         </div>
 
         <button
@@ -750,7 +1351,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
           onClick={handleRefresh}
           disabled={isLoading || isRefreshing}
           title="Refresh Feed"
-          className="p-2 sm:px-3 sm:py-2 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer active:scale-95 disabled:opacity-50"
+          className="p-2 sm:px-3 sm:py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5 transition-all text-xs font-semibold cursor-pointer active:scale-95 disabled:opacity-50 shadow-xs"
         >
           <RefreshCw
             className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${
@@ -759,7 +1360,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
           />
           <span className="hidden sm:inline">Refresh</span>
         </button>
-      </div>
+      </form>
 
       {/* SECTION HEADER BANNER */}
       <div className="flex items-center justify-between px-1">
@@ -863,7 +1464,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
                 >
                   {/* GOOGLE FEED PROMINENT COVER THUMBNAIL (AS REQUESTED) */}
                   <div
-                    onClick={() => openUrl(article.link)}
+                    onClick={() => openUrl(article.link, { ...article, type: 'news' })}
                     className="relative w-full aspect-[16/9] bg-slate-900 overflow-hidden cursor-pointer"
                   >
                     <img
@@ -915,7 +1516,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
                     <div>
                       {/* Bold Main Headline (Google Discover Style) */}
                       <h3
-                        onClick={() => openUrl(article.link)}
+                        onClick={() => openUrl(article.link, { ...article, type: 'news' })}
                         className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug tracking-tight hover:text-emerald-600 dark:hover:text-emerald-400 cursor-pointer transition-colors"
                       >
                         {article.title}
@@ -1034,7 +1635,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
                 >
                   {/* PROMINENT COVER THUMBNAIL (AS ON GOOGLE DISCOVER) */}
                   <div
-                    onClick={() => openUrl(opp.originalLink)}
+                    onClick={() => openUrl(opp.originalLink, { ...opp, type: 'opportunity' })}
                     className="relative w-full aspect-[16/9] bg-slate-100 dark:bg-slate-800 overflow-hidden cursor-pointer"
                   >
                     <img
@@ -1098,7 +1699,7 @@ export const NewsScreen: React.FC<NewsScreenProps> = ({
                     <div>
                       {/* Title */}
                       <h3
-                        onClick={() => openUrl(opp.originalLink)}
+                        onClick={() => openUrl(opp.originalLink, { ...opp, type: 'opportunity' })}
                         className="text-base sm:text-lg font-bold text-slate-900 dark:text-slate-100 leading-snug tracking-tight hover:text-indigo-600 dark:hover:text-indigo-400 cursor-pointer transition-colors"
                       >
                         {opp.title}
